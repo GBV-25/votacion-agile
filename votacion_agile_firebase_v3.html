@@ -1,0 +1,123 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Votación Agile con Firebase</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded shadow">
+    <h1 class="text-2xl font-bold mb-4">🗳️ Votación Agile</h1>
+    <p class="mb-4">Introduce tu nombre y vota por 3 iniciativas con 3, 2 y 1 punto respectivamente. Las demás deben tener 0 puntos.</p>
+    <form id="voteForm" class="space-y-4">
+      <input type="text" id="voterName" placeholder="Tu nombre" required class="w-full p-2 border rounded" />
+      <div id="initiatives" class="space-y-2"></div>
+      <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Enviar Voto</button>
+    </form>
+    <div class="mt-6">
+      <h2 class="text-xl font-bold">📊 Resultados</h2>
+      <ul id="results" class="mt-2 space-y-1"></ul>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAF4mYFxwk21dtU3-R04TrguiowHXfJqpI",
+      authDomain: "votacion-agile.firebaseapp.com",
+      projectId: "votacion-agile",
+      storageBucket: "votacion-agile.firebasestorage.app",
+      messagingSenderId: "1072994282253",
+      appId: "1:1072994282253:web:7f42ea64e4045b0b1b1e44",
+      measurementId: "G-WFKY5E39L7"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const initiatives = [
+      "🚀 Mejorar el proceso de despliegue",
+      "🧠 Sesiones de aprendizaje cruzado",
+      "📦 Automatizar pruebas de regresión",
+      "🎯 Refinamiento de backlog más eficiente",
+      "🤝 Mejorar comunicación con stakeholders",
+      "🛠️ Optimizar herramientas de desarrollo"
+    ];
+
+    const voteForm = document.getElementById("voteForm");
+    const initiativesDiv = document.getElementById("initiatives");
+    const resultsList = document.getElementById("results");
+
+    function renderInitiatives() {
+      initiatives.forEach((initiative, index) => {
+        const div = document.createElement("div");
+        div.innerHTML = \`
+          <label class="block font-medium">\${initiative}</label>
+          <select name="vote-\${index}" class="w-full p-2 border rounded">
+            <option value="0">0️⃣</option>
+            <option value="1">1️⃣</option>
+            <option value="2">2️⃣</option>
+            <option value="3">3️⃣</option>
+          </select>
+        \`;
+        initiativesDiv.appendChild(div);
+      });
+    }
+
+    function updateResults() {
+      db.collection("votes").get().then(snapshot => {
+        const scores = Array(initiatives.length).fill(0);
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          data.votes.forEach((v, i) => scores[i] += v);
+        });
+
+        const sorted = initiatives.map((name, i) => ({ name, score: scores[i] }))
+                                  .sort((a, b) => b.score - a.score);
+
+        resultsList.innerHTML = "";
+        sorted.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = \`\${item.name}: ⭐ \${item.score}\`;
+          resultsList.appendChild(li);
+        });
+      });
+    }
+
+    voteForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("voterName").value.trim();
+      if (!name) {
+        alert("Por favor, introduce tu nombre.");
+        return;
+      }
+
+      const votes = initiatives.map((_, i) => parseInt(voteForm[\`vote-\${i}\`].value));
+      const total = votes.reduce((a, b) => a + b, 0);
+      const unique = new Set(votes.filter(v => v > 0));
+
+      if (total !== 6 || unique.size !== 3) {
+        alert("Debes asignar exactamente 3, 2 y 1 punto a tres iniciativas diferentes.");
+        return;
+      }
+
+      const existing = await db.collection("votes").doc(name).get();
+      if (existing.exists) {
+        alert("Ya has votado.");
+        return;
+      }
+
+      await db.collection("votes").doc(name).set({ votes });
+      alert("✅ Voto registrado");
+      voteForm.reset();
+      updateResults();
+    });
+
+    renderInitiatives();
+    updateResults();
+  </script>
+</body>
+</html>
