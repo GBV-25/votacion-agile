@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Votación Agile en Tiempo Real</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 min-h-screen p-6 font-sans">
+  <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-lg p-6 space-y-6">
+    <h1 class="text-3xl font-bold text-center text-purple-700">🌟 Votación Agile en Tiempo Real 🌟</h1>
+
+    <div class="bg-yellow-100 p-4 rounded-lg border border-yellow-300">
+      <h2 class="text-lg font-semibold mb-2">📜 Normas de votación:</h2>
+      <ul class="list-disc list-inside space-y-1 text-gray-700">
+        <li>Solo puedes votar una vez.</li>
+        <li>Debes asignar <strong>3, 2 y 1 punto</strong> a tres iniciativas diferentes.</li>
+        <li>Las demás deben recibir <strong>0 puntos</strong>.</li>
+        <li>Máximo <strong>10 personas</strong> pueden votar.</li>
+      </ul>
+    </div>
+
+    <form id="voteForm" class="space-y-4">
+      <div id="initiatives" class="space-y-4"></div>
+      <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+        🗳️ Enviar Voto
+      </button>
+    </form>
+
+    <div id="results" class="space-y-2">
+      <h2 class="text-xl font-bold text-center text-green-700">📊 Resultados en tiempo real</h2>
+      <ul id="ranking" class="space-y-2"></ul>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAF4mYFxwk21dtU3-R04TrguiowHXfJqpI",
+      authDomain: "votacion-agile.firebaseapp.com",
+      projectId: "votacion-agile",
+      storageBucket: "votacion-agile.firebasestorage.app",
+      messagingSenderId: "1072994282253",
+      appId: "1:1072994282253:web:7f42ea64e4045b0b1b1e44",
+      measurementId: "G-WFKY5E39L7"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const form = document.getElementById("voteForm");
+    const initiativesDiv = document.getElementById("initiatives");
+    const rankingList = document.getElementById("ranking");
+
+    let initiatives = [];
+
+    function renderInitiatives() {
+      initiativesDiv.innerHTML = "";
+      initiatives.forEach((initiative, index) => {
+        const html = `
+          <div class="bg-gray-100 p-4 rounded-lg shadow-sm">
+            <label class="block text-lg font-medium text-gray-800 mb-2">${initiative.name}</label>
+            <select name="vote-${initiative.id}" class="w-full p-2 rounded border border-gray-300">
+              <option value="0">0️⃣ puntos</option>
+              <option value="1">1️⃣ punto</option>
+              <option value="2">2️⃣ puntos</option>
+              <option value="3">3️⃣ puntos</option>
+            </select>
+          </div>
+        `;
+        initiativesDiv.innerHTML += html;
+      });
+    }
+
+    function updateRanking(votes) {
+      const scores = {};
+      initiatives.forEach(i => scores[i.id] = { name: i.name, score: 0 });
+
+      Object.values(votes).forEach(vote => {
+        Object.entries(vote).forEach(([id, val]) => {
+          scores[id].score += parseInt(val);
+        });
+      });
+
+      const sorted = Object.values(scores).sort((a, b) => b.score - a.score);
+      rankingList.innerHTML = sorted.map(s => `
+        <li class="bg-white p-3 rounded shadow flex justify-between items-center">
+          <span class="text-lg">${s.name}</span>
+          <span class="text-xl font-bold text-purple-700">⭐ ${s.score}</span>
+        </li>
+      `).join("");
+    }
+
+    function loadVotes() {
+      db.ref("votes").on("value", snapshot => {
+        const data = snapshot.val() || {};
+        updateRanking(data);
+      });
+    }
+
+    function loadInitiativesFromTrello() {
+      const key = "c72668d77c773773bf5c5d6a34031a5b";
+      const token = "ATTA0113dbc01c3bc4b91e8bd9e92caf69a173e30ca15cfb2e30e42a148fde5744c9A1B89591";
+      const listId = "64f5c7b7e6d3f3b5c6a1b3c2"; // Reemplaza con el ID real de la lista
+
+      fetch(`https://api.trello.com/1/lists/${listId}/cards?key=${key}&token=${token}`)
+        .then(res => res.json())
+        .then(data => {
+          initiatives = data.map(card => ({ id: card.id, name: card.name }));
+          renderInitiatives();
+          loadVotes();
+        });
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const vote = {};
+      let total = 0;
+      let unique = new Set();
+
+      initiatives.forEach(i => {
+        const val = parseInt(formData.get(`vote-${i.id}`));
+        vote[i.id] = val;
+        if (val > 0) unique.add(val);
+        total += val;
+      });
+
+      if (total !== 6 || unique.size !== 3) {
+        alert("Debes asignar exactamente 3, 2 y 1 punto a tres iniciativas diferentes.");
+        return;
+      }
+
+      db.ref("votes").once("value", snapshot => {
+        const data = snapshot.val() || {};
+        if (Object.keys(data).length >= 10) {
+          alert("¡Ya han votado 10 personas!");
+          return;
+        }
+        const newVoteRef = db.ref("votes").push();
+        newVoteRef.set(vote);
+        alert("✅ ¡Voto registrado!");
+        form.reset();
+      });
+    });
+
+    loadInitiativesFromTrello();
+  </script>
+</body>
+</html>
